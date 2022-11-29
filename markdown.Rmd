@@ -1,0 +1,200 @@
+---
+title: "Mortage Loan Eligibility"
+author: "Mark Athas"
+date: "2022-10-21"
+output:
+  pdf_document: default
+bibliography: /Users/MyDocuments/HarvardX/DataScienceWithR/09 Capstone/loans/bibliography.bib
+link-citations: yes
+# Copywrite: Mark Athas, 2020
+# Licensed under GPLv3.0
+---
+
+```{r setup, include=TRUE, echo=FALSE,warning=FALSE,message=FALSE,error=FALSE}
+
+## Change dd to the location of your R software home directory
+dd <- 'loans.RData'
+load(dd)
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+# Abstract
+United States Federal law has defined a Consumer Financial Protection Bureau (CFPB). This Bureau has responsibility to track and report on lender mortgage loan activity. To fulfill that accountability, the CFPB collects loan activity and makes that data available to the public on an annual basis.  This report utilizes that data to create a model to predict the granting of mortgage loans for single family, owner occupied mortgage applications. 
+
+# Introduction
+There is significant public interest in the mortgage loan activity of America's banks particularly as related to the sex, race and age of the applicant.  The Consumer Financial Protection Bureau provides annual data sets of all mortgage loan activity from all 50 states.  The latest year with complete data is 2021 which contains millions of loan applications.   To manage the computational requirements of this analysis, it was limited to  represent states with lowest, middle and highest median income.
+
+To predict mortgages granted to the general public, applications for commercial and re-purchase loans are removed from the data set. Additionally, multi-unit mortgages were also removed, leaving only single-family loans made to occupying applicants.  These mortgages are the focus of this analysis.  
+
+This report seeks to identify an optimal model to predict if a loan is granted to the applicant. The methodology to achieve this objective will involve a number of broad activities. First, the current condition of the data will be assessed.  This will include describing the input data, evaluating its completeness and creating a tidy data set that can be further analyzed. Next, a number of machine learning models will be trained and their accuracy as determined by confusion matrix will be recorded. The final step will run the best-fit model(s) against a verification data set. The verification set accuracy achieved is `r round(cm_verxgb$overall["Accuracy"] * 100, 2)` percent.
+
+# Methodology and Analysis
+
+The 2021 data from the CFBP contains over 2.6 million mortgage loans in a more than 10 gigabyte file. [@CFPB]  This amount of data is too large to be processed in the available RStudio/R compute environment. To reduce the volume of data, mortgage loan applications were selected based on their representation among low, middle and high median incomes. The Federal Reserve median income by state data  [@FRED]was used to make the state selection. This reduced the total number of mortgage loans to `r format(loans_original_total, big.mark=",")` which is manageable on the available compute platform.
+
+## Single Family Home Purchases by Individuals
+The CFBP loans data contains both personal and commercial loans, new and re-finance loans, normal and reverse-mortgage loans--basically all loans provided by the banks in each state. For this analysis, loans included are only those from applications of single family, built on-site and owner occupied properties.  The loans must also be for purchase and not refinance.  Also, ony loans with applicant income are included. 
+
+Data wrangling was performed to filter the data as described previously, but also includes filling in missing variables with the median data of the corresponding Metropolitan Statistical Area (MSA).
+
+## Features and Outcome
+The identified features are listed in Table 1 with a brief description.  Feature selection was limited to these variables as they represent input from the application and publically available data about the property (e.g., property address, MSA).
+
+\center __Table 1: Available Features__
+```{r Table1, echo=FALSE,warning=FALSE,message=FALSE,error=FALSE}
+feature_desc %>%
+  knitr::kable(align = "ll", digits = 1, 
+             format.args = list(scientific = FALSE, big.mark = ","))
+```
+
+\flushleft
+The features include nominal discrete, ordinal discrete and continuous variables.  Discrete values are re-coded to reduce the number of natural classes in the data as there were a significant number of class values with few observations. These were also converted to numeric values. 
+
+A histogram plot of the candidate features is provided in Figure 1. Most factors have a skewness. Additionally the box-plots in Figure 2 show that outliers exist in most features. 
+
+For continuous variables, a number of scaling functions were tried including logarithmic and exponentiation to reduce skewness, yet these proved to only have a negative impact on accuracy.  Regularization and elimination of outliers also showed no improvement in prediction accuracy. Removal of these features, as a last-resort approach, would be arbitrary as they are more better described as legitimate extreme value rather than outliers due to measurement error.
+
+\pagebreak
+\center __Figure 1: Applicant Feature Histograms__
+```{r Figure1, echo=FALSE, error=FALSE, fig.align='center', fig.height=4.5, fig.width=8, message=FALSE, warning=FALSE, paged.print=FALSE}
+plot_tidy_hist$page_1
+```
+
+\center __Figure 2: Applicant Feature Boxplots__
+```{r Figure2, echo=FALSE, error=FALSE, fig.align='center', fig.height=4.5, fig.width=8, warning=FALSE, message=FALSE, paged.print=FALSE}
+plot_tidy_box$page_1
+```
+
+\flushleft
+### Outcome Variable
+The outcome variable is derived from the action taken by the lender.  Such actions could include loan denied, loan not accepted, application rejected or loan originated.  These values are consolidated into a loan granted and loan not granted value coded into a variable called *granted*.  The granted variable is a binary categorical outcome with value of zero (loan not granted) or one (loan granted).
+
+## Creation of Train, Test and Verification Data
+The loans from the selected states were split using `createDataPartition()`. A partitioning probability was selected after multiple runs of all models while altering the p value.  Model accuracy and F1 scores for the best performing models resulted from a partitioning probability of 0.7.  The partition split resulted in a train set of `r format(nrow(train_set), big.mark=",")` loans and an intermediate set.  Next, the intermediate set was split 50/50 into test set of `r format(nrow(test_set), big.mark=",")` loans and verification set of `r format(nrow(test_ver), big.mark=",")` loans.
+
+# Model Analysis
+Five machine language models were applied in this analysis including; naive Bayes, knn, decision tree, random forest, and xgBoost.  Each of these is compared to random guessing as a baseline.
+
+## Analysis of Random Guessing
+To simulate a random selection mechanism which will act as a baseline, a binary random sample vector sized to matched the test set with a 50/50 probability is created using ```sample()```.  The resulting zero/one vector was passed along with the test set to a confusion matrix.
+
+The random sample produced a result of `r round(cm_rand$overall["Accuracy"], 5)`.  Figure 3 shows the random sample confusion matrix which is approaching the 50% probability of a equalized random binary outcome resulting from `r format(nrow(test_set), big.mark=",")` observations. However, guessing performs worse than the actual mean loans granted one could realize by inspection of the mean _granted_ loans `r round(mean(test_set$granted == 1), 5)` in the test data set. 
+
+\center __Figure 3: Random Guessing Confusion Matrix__
+```{r Figure3, echo=FALSE, error=FALSE, fig.align='center', fig.height=2.5, fig.width=2.5,  message=FALSE, warning=FALSE, paged.print=FALSE}
+cm_plot_rand_f1
+```
+
+\pagebreak
+\flushleft
+## Analysis of Naive Bayes
+The Naive Bayes model applied to the test data resulted in a model with prediction accuracy of `r round(cm_nb$overall["Accuracy"], 5)`.  This is better than random and exceeds the means loans granted from the data.  The confusion matrix of naive Bayes is provided in Figure 4.
+
+\center __Figure 4: Naive Bayes Confusion Matrix__
+```{r Figure4, echo=FALSE, error=FALSE, fig.align='center', fig.height=2.5, fig.width=2.5, message=FALSE, warning=FALSE, paged.print=FALSE}
+cm_plot_nb_f1
+```
+
+\flushleft
+Challenges with naive Bayes appear due to the assumptions of the model.  First, it assumes the features act on the outcome with little or dependency on each other.  However, with this data that assumption does not hold. Some features have dependency.  For example, loan amount and property value correlate as seen in Figure 5.  Other features also defy naive Bayes assumed independence.
+
+\center __Figure 5: Loan Amount to Property Value__
+```{r Figure5, echo=FALSE, error=FALSE, fig.align='center', fig.height=2.5, fig.width=2.5, message=FALSE, warning=FALSE, paged.print=FALSE}
+plot_nb_reg
+```
+
+\flushleft
+Additionally, as seen in Figure 1, features are not normal which also introduces difficulty for the naive Bayes model.  Yet, naive Bayes is an improvement over random guessing.
+
+## Analysis of K-Nearest Neighbors
+The knn model is the first to show potential.  As a distance-based approach, the raw feature data will reduce accuracy as the features variety in domain, range, and distribution as visible in the Figure 2 boxplots. To remediate this, features are scaled to normalize their mean and standard deviation.
+
+knn on the test data set produced an accuracy of `r round(cm_knn$overall["Accuracy"], 5)`.  Additionally, the F1 is also improved as noted in Figure 6.
+
+\pagebreak
+\center __Figure 6: knn Confusion Matrix__
+```{r Figure6, echo=FALSE, error=FALSE, fig.align='center', fig.height=2.5, fig.width=2.5, message=FALSE, warning=FALSE, paged.print=FALSE}
+cm_plot_knn_f1
+```
+
+\flushleft
+## Analysis of Decision Tree
+A decision tree is a common model for learning as it is easy to explain, and particularly for this analysis, "can easily handle qualitative predictors." [@GAR] A number of features are categorical which benefit this model. Test data applied to the trained model produced an accuracy of `r round(cm_rpart$overall["Accuracy"], 5)`, an improvement of `r round((cm_rpart$overall["Accuracy"] - cm_rand$overall["Accuracy"]) / cm_rand$overall["Accuracy"] * 100, 1)` percent over guessing.
+
+\center __Figure 7: Decision Tree Confusion Matrix__
+```{r Figure7, echo=FALSE, error=FALSE, fig.align='center', fig.height=2.5, fig.width=2.5, message=FALSE, warning=FALSE, paged.print=FALSE}
+cm_plot_rpart_f1
+```
+
+\flushleft
+## Analysis of Random Forest
+The Random Forest, due to the bootstrapping (splitting the test data into groups) and randomness provides an improvement over the decision tree. As explained by Irizarry, "These two factors combined explain the name: the bootstrap makes the individual trees *randomly* different, and the combination of trees is the *forest*." [@IRIZ] Additionally, these qualities  help reduce overfitting.  IBM states, "when there’s a robust number of decision trees in a random forest, the classifier won’t overfit." [@IBM]  Also, random forest reduces the impact of outliers in the model as noted by the Corporate Finance Institute, "cases of missing values and outliers have less significance on the decision tree’s data." [@CFI]. In this analysis, random forest is among the better performing models. 
+
+The random forest confusion matrix is presented in Figure 8.  Random forest accuracy was `r round(cm_rf$overall["Accuracy"], 5)`.  Which is an improvement of `r round((cm_rf$overall["Accuracy"] - cm_rand$overall["Accuracy"]) / cm_rand$overall["Accuracy"] * 100, 1)` percent over guessing.
+
+\pagebreak
+\center __Figure 8: Random Forest Confusion Matrix__
+```{r Figure8, echo=FALSE, error=FALSE, fig.align='center', fig.height=2.5, fig.width=2.5, message=FALSE, warning=FALSE, paged.print=FALSE}
+cm_plot_rf_f1
+```
+
+\flushleft
+## Analysis of xgBoost
+XgBoost is a well known model for its performance.  It replaces the bootstrapping of random forest with boosting where, "the trees are grown sequentially: each tree is grown using information from previously grown trees." [@GAR]  Although the improvement over random forest is slight, it also retains a favorable level of F1. The xgBoost produced an accuracy `r round(cm_xgb$overall["Accuracy"], 5)`.  Which is an improvement of `r round((cm_xgb$overall["Accuracy"] - cm_rand$overall["Accuracy"]) / cm_rand$overall["Accuracy"] * 100, 1)` percent over guessing.
+
+\center __Figure 9: xgBoost Confusion Matrix__
+```{r Figure9, echo=FALSE, error=FALSE, fig.align='center', fig.height=2.5, fig.width=2.5, message=FALSE, warning=FALSE, paged.print=FALSE}
+cm_plot_xgb_f1
+```
+
+\pagebreak
+\flushleft
+# Conclusion
+Of the models applied in this analysis, naive Bayes produced the weakest performance of `r round(cm_nb$overall["Accuracy"] * 100, 2)`.  The xgBoost model produced the best performance at `r round(cm_xgb$overall["Accuracy"] * 100, 2)`. In addition to an improvement in accuracy, the F1 value of xgBoost is also improved as shown in Table 2 below.
+
+\center __Table 2: Summary Test Results__
+```{r Table2, echo=FALSE,warning=FALSE,message=FALSE,error=FALSE}
+results %>%
+  knitr::kable(align = "lr", digits = 5, 
+             format.args = list(scientific = FALSE, big.mark = ","))
+```
+
+\flushleft
+## Verification Results
+As a cross-check, a verification run of the top two models was performed.  Verification on random forest produced an accuracy of `r round(cm_verrf$overall["Accuracy"] * 100, 2)`. XgBoost accuracy on verification data is `r round(cm_verxgb$overall["Accuracy"] * 100, 2)`.   Details of the verification listed in Table 3 compare favorably for random forest and xgBoost test runs detailed in Table 2. Both models limited the effect of outliers and overfitting.
+
+\center __Table 3: Summary Verification Results__
+```{r Table3, echo=FALSE,warning=FALSE,message=FALSE,error=FALSE}
+vresults %>%
+  knitr::kable(align = "lr", digits = 5, 
+             format.args = list(scientific = FALSE, big.mark = ","))
+```
+
+\flushleft
+Returning to the pubic concerns with regard to mortgage loans, the feature importance provides some insight into the expected drivers of underwrite decision making.  Figure 10 below shows the importance variables of the best performing model, xgBoost. Variables with low importance in underwriting include: age, term and race. Sex is relatively low as well. One could conclude that bank underwriting is achieving the social goals of these features because their importance is low, inferring they are not impactful in loan underwriting.  
+
+The top three variables in terms of importance are: debt ratio, interest rate and loan-to-value ratio. This could be expected as applicant debt ratio is a strong indicator of confidence in the applicants ability to re-pay. Importance of loan-to-value would signify the level of risk protection the bank could hold in the property.  Interest rate splits the top and third importance variables, which could infer the criticality of loan profitability for the lender.
+
+\pagebreak
+\center __Figure 10: xgBoost Variable Importance__
+```{r Figure10, echo=FALSE, error=FALSE, fig.align='center', fig.height=3.5, fig.width=5, message=FALSE, warning=FALSE, paged.print=FALSE}
+plot_xgb_imp
+```
+
+\flushleft
+# Future Study
+Due to the compute environment for this analysis, loan data was significantly restricted from over 2.6M loans to `r format(loans_original_total, big.mark=",")`. A processing environment that could handle the entire 2021 data set would certainly impact the outcome of this analysis.  
+
+Tuning ML models is a laborious process in the RStudio environment. Cloud platform solutions such as _DataRobot_ [@DR] could not only handle the many giga-bytes in the original loan data set, but its built-in tuning capabilities applied automatically across many ML models, could produce better outcomes.
+
+\flushleft
+## Computational Environment
+This analysis was performed using RStudio 2022.07.1, build 554 with R 4.2.1, running on a MacBook Pro (2018) with an Intel Core I7 and 16GB Memory.
+ 
+# References
+
+
+
+
+
