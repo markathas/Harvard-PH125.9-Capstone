@@ -6,7 +6,7 @@ output:
   pdf_document: default
 bibliography: /Users/MyDocuments/HarvardX/DataScienceWithR/09 Capstone/loans/bibliography.bib
 link-citations: yes
-# Copywrite: Mark Athas, 2020
+# Copywrite: Mark Athas, 2022
 # Licensed under GPLv3.0
 ---
 

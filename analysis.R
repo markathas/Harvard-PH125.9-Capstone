@@ -1,7 +1,7 @@
 # Mark Athas
 # Harvardx PH125.9x
 # October, 2022
-# Copywrite: Mark Athas, 2020
+# Copywrite: Mark Athas, 2022
 # Licensed under GPLv3.0
 
 # NOTE: RUN TIME is 9 - 12 Minutes on MacBook Pro 2017
